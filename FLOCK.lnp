@@ -1,0 +1,8 @@
+"main.obj",
+"PRO.obj",
+"FIGER.obj",
+"IAP.obj",
+"ADC.obj",
+"OS.obj" 
+TO "FLOCK" 
+RAMSIZE(256) 

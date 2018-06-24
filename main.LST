@@ -1,0 +1,675 @@
+C51 COMPILER V9.03   MAIN                                                                  03/31/2012 17:05:13 PAGE 1   
+
+
+C51 COMPILER V9.03, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN main.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE main.c LARGE BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          //****************************************************************
+   2          //  项目名称:指纹锁
+   3          //  作    者:张俊锋
+   4          //  芯片名称:STC12LE5616AD
+   5          //  V1.0日期:2008-05-20
+   6          //  版    本:V2.0
+   7          //  备    注:方程式指纹模块
+   8          //  修改日期:2011-09-14
+   9          //****************************************************************
+  10          #define MAIN_GLOBALS
+  11          #include <includes.h>
+  12          #define CODE_K0 0x10
+  13          #define CODE_K1 0x08
+  14          #define CODE_K2 0x04
+  15          #define CODE_K3 0x02
+  16          #define DELAY_TIM 200
+  17          
+  18          #define FUN_00 0x00
+  19          #define FUN_01 0x01
+  20          #define FUN_02 0x02
+  21          #define FUN_03 0x03
+  22          #define FUN_04 0x04
+  23          
+  24          //#define CODE_K6 0x20
+  25          //#define CODE_K7 0x40
+  26          unsigned char key_number;
+  27          unsigned char key();
+  28          unsigned char key_pwr();
+  29          unsigned char key_fun();
+  30          unsigned char FlagBuf;
+  31          unsigned char T0cnt=0;
+  32          unsigned char ScanPwrBuf[8];
+  33          unsigned char fPwrOk;
+  34          unsigned char fDkey;
+  35          unsigned char fAdCir;
+  36          unsigned char fSec;
+  37          unsigned int mainTimer;
+  38          //unsigned char MK;
+  39          INT8U UsePwrBuf[6][8];  //用户密码数据
+  40          INT8U SuperPwrBuf[6];   //厂家密码数据
+  41          
+  42          INT16U code ADR_PWRDATA[]={0x0800,0x0810,0x0820,0x0830,0x0840,0x0850};
+  43          //密码存放地址 1个管理密码和6个用户密码
+  44          
+  45          //------------------------------------------------------------------------------------------------
+  46          //以下是
+  47          //------------------------------------------------------------------------------------------------
+  48          static void MainTxdByte(unsigned char i)
+  49          {
+  50   1      
+  51   1          TI = 0;
+  52   1          SBUF = i;
+  53   1          while(!TI);
+  54   1         TI = 0;
+  55   1      }
+C51 COMPILER V9.03   MAIN                                                                  03/31/2012 17:05:13 PAGE 2   
+
+  56          
+  57          void  mem_ini()                   //内存初始化程序
+  58          {
+  59   1        INT8U i,j,k;
+  60   1        INT16U i_16u;
+  61   1        //INT8U pwr_ran[6];
+  62   1        i=0;
+  63   1              j=0;
+  64   1              i_16u=0;
+  65   1              clk0=0;
+  66   1              clk1=0;
+  67   1              clk2=0;
+  68   1              Second=0;
+  69   1        Minute=0;
+  70   1        doorflag=0;
+  71   1        fDkey=0;
+  72   1        fAdCir=0;
+  73   1        PointADC=0;
+  74   1        SearchNumber=0xffff;//搜索到的指纹序列号
+  75   1        //SaveNumber=0xffff;
+  76   1              P1M0=0x01;//0000 0001b
+  77   1              P1M1=0x00;//0100 0000b
+  78   1              P2M0=0x00;//
+  79   1              P2M1=0x00;
+  80   1              P3M0=0x00;//0000 0000b
+  81   1              P3M1=0xBc;//1011 1100b
+  82   1              P1=0xff;
+  83   1              P2=0xff;
+  84   1              P3=0x4b;  //0100 1011b
+  85   1              PIN_IA=0;
+  86   1              PIN_IB=0;
+  87   1              PIN_PWR=1;
+  88   1              //PIN_FPWR=1;
+  89   1              flag_com_rx_finish=0;
+  90   1              //Module_power(off);
+  91   1              AUXR=0x30;
+  92   1              ADCrackDat=182;
+  93   1              i=IAP_read(IAP_ADR_DEFAULT);
+  94   1      //------------------------------------------------------------------
+  95   1      //------------------------------------------------------------------
+  96   1              for(k=0;k<6;k++)  //读取用户密码数据
+  97   1              {
+  98   2                for(i_16u=ADR_PWRDATA[k];i_16u<(ADR_PWRDATA[k]+8);i_16u++)
+  99   2                {
+ 100   3                      j=i_16u-ADR_PWRDATA[k];
+ 101   3                      UsePwrBuf[k][j]=IAP_read(i_16u);
+ 102   3                }
+ 103   2              }
+ 104   1              for(i_16u=0;i_16u<58;i_16u++)   //读取指纹模板表
+ 105   1              {
+ 106   2                      userFigerTab[i_16u]=IAP_read(ADR_FTAB+i_16u);
+ 107   2              }
+ 108   1      }
+ 109          
+ 110          //*******************************************************************************************************
+ 111          unsigned char keytest()
+ 112          {
+ 113   1              unsigned char key_temp;
+ 114   1        key_temp=0x00;
+ 115   1      //************************键盘扫描************************************
+ 116   1        //Pin_K1=1;
+ 117   1        Pin_K2=1;
+C51 COMPILER V9.03   MAIN                                                                  03/31/2012 17:05:13 PAGE 3   
+
+ 118   1        Pin_K3=1;
+ 119   1        Pin_K4=1;
+ 120   1        Pin_K5=1;
+ 121   1        //Pin_K6=1;
+ 122   1        //Pin_K7=1;
+ 123   1              //if(Pin_K1)key_temp|=0x01;else key_temp&=0xfe;
+ 124   1              if(!Pin_K2)key_temp|=0x02;else key_temp&=0xfd;
+ 125   1              if(!Pin_K3)key_temp|=0x04;else key_temp&=0xfb;
+ 126   1              if(!Pin_K4)key_temp|=0x08;else key_temp&=0xf7;
+ 127   1              if(!Pin_K5)key_temp|=0x10;else key_temp&=0xef;
+ 128   1              //if(!Pin_K6)key_temp|=0x20;else key_temp&=0xdf;
+ 129   1              //if(Pin_K7)key_temp|=0x40;else key_temp&=0xbf;
+ 130   1              //if(!Pin_K8)key_temp|=0x80;else key_temp&=0x7f;
+ 131   1              return key_temp;
+ 132   1      }
+ 133          unsigned char key()
+ 134          {
+ 135   1              unsigned char key_buf00=0;
+ 136   1              unsigned char key_buf01=0;
+ 137   1              LED_delay_time(10);
+ 138   1        key_buf00=keytest();
+ 139   1        LED_delay_time(10);
+ 140   1        key_buf01=keytest();
+ 141   1        if(key_buf00!=key_buf01)return 0;
+ 142   1        else
+ 143   1        {
+ 144   2              return key_buf00;
+ 145   2        }
+ 146   1      }
+ 147          
+ 148          unsigned char ScanOpenWrd()
+ 149          {
+ 150   1              unsigned char key_number;
+ 151   1              unsigned char l=0;
+ 152   1              Clear_Timer();  //清定时器
+ 153   1              while(l<8)  //8位密码
+ 154   1              {
+ 155   2                      key_number=key();
+ 156   2                      WDG_CONTR=0x3d;  //喂狗 1.13s
+ 157   2              switch(key_number)
+ 158   2              {
+ 159   3                      case CODE_K0:
+ 160   3                      {
+ 161   4                              ScanPwrBuf[l]=2;
+ 162   4                              BuzzerCTL(1,150);
+ 163   4                              l++;
+ 164   4                              Clear_Timer();
+ 165   4                      }break;
+ 166   3                      case CODE_K1:
+ 167   3                      {
+ 168   4                              ScanPwrBuf[l]=3;
+ 169   4                              BuzzerCTL(1,150);
+ 170   4                              l++;
+ 171   4                              Clear_Timer();
+ 172   4                      }break;
+ 173   3                      case CODE_K2:
+ 174   3                      {
+ 175   4                              ScanPwrBuf[l]=4;
+ 176   4                              BuzzerCTL(1,150);
+ 177   4                              l++;
+ 178   4                              Clear_Timer();
+ 179   4                      }break;
+C51 COMPILER V9.03   MAIN                                                                  03/31/2012 17:05:13 PAGE 4   
+
+ 180   3                      case CODE_K3:
+ 181   3                      {
+ 182   4                              ScanPwrBuf[l]=5;
+ 183   4                              BuzzerCTL(1,150);
+ 184   4                              l++;
+ 185   4                              Clear_Timer();
+ 186   4                      }break;
+ 187   3                      default:break;
+ 188   3              }
+ 189   2              if(Second>=10)
+ 190   2                      {
+ 191   3                              GreenOff();
+ 192   3                              RedOn();
+ 193   3                              BuzzerCTL(2,150);
+ 194   3                              RedOff();
+ 195   3                              power(off);
+ 196   3                      }
+ 197   2        }
+ 198   1        return(1);
+ 199   1      }
+ 200          
+ 201          //*******************************************************************************************************
+ 202          void Open_Door_Program()                  //开门程序流程
+ 203          {
+ 204   1        unsigned char i=0;
+ 205   1        //Module_power(off);                      //关闭模块电源
+ 206   1        GreenOn();//RedOn();
+ 207   1        BuzzerCTL(1,200);
+ 208   1        OpenDoor();
+ 209   1        RedOff();
+ 210   1        Clear_Timer();
+ 211   1        for(i=0;i<6;i++)
+ 212   1        {
+ 213   2              LED_delay_time(633);
+ 214   2              WDG_CONTR=0x3d;  //喂狗 1.13s
+ 215   2        }
+ 216   1        CloseDoor();
+ 217   1        return;    //如果5秒内没有按门把手  直接关门
+ 218   1      }
+ 219          //*******************************************************************************************************
+ 220          
+ 221          void    T0_Ini() reentrant using 0              //定时器0初始化,5ms中断一次
+ 222          {
+ 223   1              TR0     = 0;
+ 224   1              TF0     = 0;
+ 225   1              TH0     = 0xdc;
+ 226   1              TL0     = 0x31;
+ 227   1              TR0     = 1;
+ 228   1              ET0     = 1;
+ 229   1      }
+ 230          
+ 231          void    Ser_Ini()  reentrant using 0
+ 232          {
+ 233   1              PCON &= 0x7f;           //波特率不倍速
+ 234   1              SCON = 0x50;            //8位数据,可变波特率
+ 235   1              AUXR &= 0xbf;           //定时器1时钟为Fosc/12,即12T
+ 236   1              AUXR &= 0xfe;           //串口1选择定时器1为波特率发生器
+ 237   1              //TMOD &= 0x0f;         //清除定时器1模式位
+ 238   1              //TMOD |= 0x20;         //设定定时器1为8位自动重装方式
+ 239   1              TMOD = 0x21;
+ 240   1              TL1 = 0xFA;             //设定定时初值
+ 241   1              TH1 = 0xFA;             //设定定时器重装值
+C51 COMPILER V9.03   MAIN                                                                  03/31/2012 17:05:13 PAGE 5   
+
+ 242   1              ET1 = 0;                //禁止定时器1中断
+ 243   1              TR1 = 1;                //启动定时器1
+ 244   1              ES=1;
+ 245   1      }
+ 246          
+ 247          //------------------------------------------------------------------------------------------------
+ 248          //以下是主函数
+ 249          //------------------------------------------------------------------------------------------------
+ 250          void main()
+ 251          {
+ 252   1              INT8U i,i_buf[3],j,k,l,mSel;
+ 253   1        INT8S i_s,j_s;
+ 254   1        unsigned char err;
+ 255   1        INT32U i_32u,j_32u;
+ 256   1        INT16U i_16u,j_16u;
+ 257   1              //bit low_power_flag=0;
+ 258   1        //unsigned char i;
+ 259   1        unsigned char MK1,MK2,MK3;
+ 260   1        unsigned char Compare_Number=0;
+ 261   1        //MK=0;
+ 262   1        
+ 263   1        MK1=0;
+ 264   1        MK2=0;
+ 265   1        MK3=0;
+ 266   1        //Module_power(off);
+ 267   1        i=0;
+ 268   1        j=0;
+ 269   1        k=0;
+ 270   1        l=0;
+ 271   1        i_s=0;
+ 272   1        j_s=0;
+ 273   1        i_32u=0;
+ 274   1        j_32u=0;
+ 275   1        i_16u=0;
+ 276   1        j_16u=0;
+ 277   1        //T0_Ini();
+ 278   1              //Ser_Ini();
+ 279   1              //EA=1;
+ 280   1              mem_ini();
+ 281   1              WDG_CONTR=0x3d;  //喂狗 1.13s
+ 282   1              Pin_K7=1;
+ 283   1              BuzzerCTL(1,150);
+ 284   1              //PIN_PWR=1;
+ 285   1              //Pin_SP=0;
+ 286   1        //-------------------------test
+ 287   1              //PIN_GLED=0;
+ 288   1              //LED_delay_time(633);
+ 289   1              //PIN_GLED=1;
+ 290   1              //WDG_CONTR=0x3d;  //喂狗 1.13s
+ 291   1              //while(1){;}
+ 292   1              //while(1)
+ 293   1              //{
+ 294   1              //      LED_delay_time(633);  //1000=790ms  633=0.5s
+ 295   1              //      PIN_GLED=!PIN_GLED;
+ 296   1              //}
+ 297   1              //--------------------------
+ 298   1              T0_Ini();
+ 299   1              Ser_Ini();
+ 300   1              ADC_Init();
+ 301   1              fAdCir=0;
+ 302   1              
+ 303   1              //-----------------------------------指纹开门或者芯片开门--------------------------
+C51 COMPILER V9.03   MAIN                                                                  03/31/2012 17:05:13 PAGE 6   
+
+ 304   1              
+ 305   1              systeminit();
+ 306   1              //LED_delay_time(10);
+ 307   1              Clear_Timer();
+ 308   1        
+ 309   1        //
+ 310   1        //Open_Door_Program();
+ 311   1        //while(1)
+ 312   1        //{
+ 313   1        //    i=key();
+ 314   1        //    if(i!=0)MainTxdByte(i);
+ 315   1        //    WDG_CONTR=0x3d;  //喂狗 1.13s
+ 316   1        //}
+ 317   1        
+ 318   1        GreenOn();
+ 319   1        //LED_Red_Flash(3,400);
+ 320   1        //power(off);                       //关闭电源
+ 321   1        ADC_CONTR=ADC_CONTR | 0x08;               //启动AD转换
+ 322   1        if (VefPSW())
+ 323   1        {
+ 324   2              Clear_Timer();  //清定时器
+ 325   2              if(!Pin_K7)
+ 326   2              {
+ 327   3              while(!Pin_K7) //后功能键按下,长按10秒则清除指纹与密码
+ 328   3              {
+ 329   4                      LED_delay_time(10);
+ 330   4                      if(Second>=10)
+ 331   4                      {
+ 332   5                              IAP_erase(ADR_USERPWR);   //清除密码
+ 333   5                          for(k=0;k<6;k++)  //读取用户密码数据
+ 334   5                      {
+ 335   6                        for(i_16u=ADR_PWRDATA[k];i_16u<(ADR_PWRDATA[k]+8);i_16u++)
+ 336   6                        {
+ 337   7                              j=i_16u-ADR_PWRDATA[k];
+ 338   7                              UsePwrBuf[k][j]=IAP_read(i_16u);
+ 339   7                        }
+ 340   6                      }
+ 341   5                      delete_all();                     //删除全部指纹程序
+ 342   5                      power(off);                       //关闭电源
+ 343   5                      }
+ 344   4              }
+ 345   3              power(off);                       //关闭电源
+ 346   3          }
+ 347   2              mainTimer=0;
+ 348   2          fSec=0;
+ 349   2          while(fSec==0)
+ 350   2          {
+ 351   3              WDG_CONTR=0x3d;  //喂狗 1.13s
+ 352   3              i=key();
+ 353   3              if(i!=0)
+ 354   3              {
+ 355   4                      BuzzerCTL(1,150);
+ 356   4                      break;
+ 357   4              }
+ 358   3          }
+ 359   2          switch(i)
+ 360   2          {
+ 361   3              case CODE_K0:
+ 362   3                      mSel=FUN_01;
+ 363   3                      break;
+ 364   3              case CODE_K1:
+ 365   3                      mSel=FUN_02;
+C51 COMPILER V9.03   MAIN                                                                  03/31/2012 17:05:13 PAGE 7   
+
+ 366   3                      break;
+ 367   3              case CODE_K2:
+ 368   3                      mSel=FUN_03;
+ 369   3                      break;
+ 370   3              case CODE_K3:
+ 371   3                      mSel=FUN_04;
+ 372   3                      break;
+ 373   3              default:
+ 374   3                      mSel=FUN_00;
+ 375   3                      break;
+ 376   3          }
+ 377   2          GreenOff();
+ 378   2              while(1)
+ 379   2                {
+ 380   3            WDG_CONTR=0x3d;  //喂狗 1.13s
+ 381   3            switch (mSel)
+ 382   3            {
+ 383   4              case FUN_01:                        //登记指纹
+ 384   4              {
+ 385   5                      GreenOn();
+ 386   5                //BuzzerCTL(1,200);
+ 387   5                login();                          //登记指纹程序
+ 388   5                      if (doorflag==1){CloseDoor();}
+ 389   5                power(off);                       //关闭电源
+ 390   5              }break;
+ 391   4              case FUN_02:                       //删除指纹
+ 392   4              {
+ 393   5                      GreenOn();
+ 394   5                //BuzzerCTL(1,200);
+ 395   5                deletef();                         //删除指纹程序
+ 396   5                      if (doorflag==1){CloseDoor();}
+ 397   5                power(off);                       //关闭电源
+ 398   5              }break;
+ 399   4              case FUN_03:                       //密码开门
+ 400   4              {
+ 401   5                      GreenOn();
+ 402   5                //BuzzerCTL(1,200);
+ 403   5                      if(ScanOpenWrd())
+ 404   5                                  {
+ 405   6                              for(i=0;i<6;i++)
+ 406   6                              {
+ 407   7                                      if(ArrCompare(UsePwrBuf[i],ScanPwrBuf,8))
+ 408   7                                      {
+ 409   8                                              Open_Door_Program();        //开门程序流程
+ 410   8                      power(off);               //关闭电源
+ 411   8                                      }
+ 412   7                              }
+ 413   6                              GreenOff();
+ 414   6                              RedOn();
+ 415   6                              BuzzerCTL(2,150);
+ 416   6                              RedOff();
+ 417   6                              power(off);
+ 418   6                            }
+ 419   5              }break;
+ 420   4              case FUN_04:                       //增加密码
+ 421   4              {
+ 422   5                      GreenOn();
+ 423   5                //LED_delay_time(10);
+ 424   5                                        Clear_Timer();  //清定时器
+ 425   5                                        i=AdminFiger_chek();
+ 426   5                                        GreenBuzzerCTL(1,150);
+ 427   5                                        GreenOn();
+C51 COMPILER V9.03   MAIN                                                                  03/31/2012 17:05:13 PAGE 8   
+
+ 428   5                                        ScanOpenWrd();
+ 429   5                                        for(i=0;i<6;i++)
+ 430   5                                        {
+ 431   6                                              if(UsePwrBuf[i][0]==0||UsePwrBuf[i][0]>=6)  //密码为空
+ 432   6                                              {
+ 433   7                                                      for(j=0;j<8;j++)
+ 434   7                                                      {
+ 435   8                                                              UsePwrBuf[i][j]=ScanPwrBuf[j];
+ 436   8                                                      }
+ 437   7                                                      IAP_erase(ADR_USERPWR);
+ 438   7                                                      for(k=0;k<6;k++)  //写入用户密码数据
+ 439   7                          {
+ 440   8                            for(i_16u=ADR_PWRDATA[k];i_16u<(ADR_PWRDATA[k]+8);i_16u++)
+ 441   8                            {
+ 442   9                              j=i_16u-ADR_PWRDATA[k];
+ 443   9                              IAP_pro_ver(i_16u,UsePwrBuf[k][j]);
+ 444   9                            }
+ 445   8                          }
+ 446   7                                                      RedOff();
+ 447   7                                            GreenOn();
+ 448   7                                                      BuzzerCTL(1,1000);
+ 449   7                                                      GreenOff();
+ 450   7                                                      power(off);
+ 451   7                                              }
+ 452   6                                        }
+ 453   5                                        //密码已满
+ 454   5                                        GreenOff();
+ 455   5                                        RedOn();
+ 456   5                                        BuzzerCTL(3,150);
+ 457   5                                        RedOff();
+ 458   5                                        power(off);
+ 459   5                                        BuzzerCTL(1,1000);
+ 460   5                                        power(off);
+ 461   5              }break;
+ 462   4              default:                            //指纹开门
+ 463   4              {
+ 464   5                      WDG_CONTR=0x3d;  //喂狗 1.13s
+ 465   5                      //Pin_SP=1;
+ 466   5                      if(MK1==0)
+ 467   5                      {
+ 468   6                              FlagBuf=ReadUserInfo();
+ 469   6                              MK1=1;
+ 470   6                  i_buf[0]=3;
+ 471   6                  i_buf[1]=0;
+ 472   6                  i_buf[2]=57;
+ 473   6                  flag_com_rx_finish=0;
+ 474   6                  Command(i_buf);
+ 475   6                  OSSemPend(&flag_com_rx_finish,500,&err);
+ 476   6                      }
+ 477   5                switch (FlagBuf)
+ 478   5                {
+ 479   6                  //-------------------------------------------------------------------------
+ 480   6                  case 1:                         //指纹库空 开门 进行 出厂设置
+ 481   6                  {
+ 482   7                      if (doorflag==0){OpenDoor();doorflag=1; clk2=0;Second=0;}
+ 483   7                      if (Second>=5)                //如果超过5秒  关闭电源
+ 484   7                                                  {
+ 485   8                                                      RedOn();
+ 486   8                      BuzzerCTL(2,150);
+ 487   8                                                          RedOff();
+ 488   8                                                          if (doorflag==1){CloseDoor();}
+ 489   8                                  //LowVolAlarm();//电压检测报警
+C51 COMPILER V9.03   MAIN                                                                  03/31/2012 17:05:13 PAGE 9   
+
+ 490   8                      power(off);                 //关闭电源
+ 491   8                    }
+ 492   7                    // delay(5);
+ 493   7                  }break;
+ 494   6                  //-------------------------------------------------------------------------
+ 495   6                  case 2:
+ 496   6                  {
+ 497   7                      //if(Pin_NC)   //如果检测到芯片信号
+ 498   7                      //{
+ 499   7                      //      Module_power(off);
+ 500   7                      //      Open_Door_Program();        //开门程序流程
+ 501   7                                                              //  power(off);               //关闭电源
+ 502   7                      //}
+ 503   7                      i=Main_searchfinger();
+ 504   7                      if(i==0xaa)
+ 505   7                      {
+ 506   8                              //Module_power(off);
+ 507   8                              Open_Door_Program();        //开门程序流程
+ 508   8                                                                power(off);               //关闭电源
+ 509   8                                                              }
+ 510   7                    else if(i==0x55)            //比对失败，则重试
+ 511   7                          {
+ 512   8                      Compare_Number++;
+ 513   8                                                                RedOn();
+ 514   8                      BuzzerCTL(3,150);         //delay(20);
+ 515   8                                                                RedOff();
+ 516   8                      if ((Compare_Number)>=3)  //如果3次验证不通过,关闭电源
+ 517   8                            {
+ 518   9                              //Module_power(off);
+ 519   9                              //LowVolAlarm();//电压检测报警
+ 520   9                              power(off);             //关闭电源
+ 521   9                            }
+ 522   8                            clk2=0;
+ 523   8                      Second=0;
+ 524   8                      i_buf[0]=3;
+ 525   8                      i_buf[1]=0;
+ 526   8                      i_buf[2]=57;
+ 527   8                      flag_com_rx_finish=0;
+ 528   8                      Command(i_buf);
+ 529   8                      OSSemPend(&flag_com_rx_finish,500,&err);
+ 530   8                    }
+ 531   7                    else if(i==0)
+ 532   7                    {
+ 533   8                      if (Second>=8)             //如果超过8秒  关闭电源
+ 534   8                      {
+ 535   9                              RedOn();
+ 536   9                              BuzzerCTL(3,150);
+ 537   9                              RedOff();
+ 538   9                              if (doorflag==1){CloseDoor();}
+ 539   9                              //LowVolAlarm();//电压检测报警
+ 540   9                              power(off);               //关闭电源
+ 541   9                      }
+ 542   8                      delay(3);
+ 543   8                    }
+ 544   7                    else
+ 545   7                    {
+ 546   8                      RedOn();
+ 547   8                      BuzzerCTL(3,150);         //delay(20);
+ 548   8                                                                RedOff();
+ 549   8                                                                power(off);               //关闭电源
+ 550   8                    }
+ 551   7                  }break;
+C51 COMPILER V9.03   MAIN                                                                  03/31/2012 17:05:13 PAGE 10  
+
+ 552   6                  //-------------------------------------------------------------------------
+ 553   6                  default:
+ 554   6                  {
+ 555   7                      RedGreenBuzzerCTL(3,200);     //红灯，绿灯，蜂鸣器同时短闪叫3次
+ 556   7                      //LowVolAlarm();//电压检测报警
+ 557   7                      power(off);                   //关闭电源
+ 558   7                  }
+ 559   6                  //-------------------------------------------------------------------------
+ 560   6                }
+ 561   5              }
+ 562   4              //----end of default
+ 563   4            }
+ 564   3          }
+ 565   2        }
+ 566   1        //LowVolAlarm();//电压检测报警
+ 567   1        power(off);                               //关闭电源
+ 568   1      }
+ 569          
+ 570          
+ 571          //定时器0中断,不够8个就在此发送
+ 572          void T0_int(void) interrupt INT_T0              //5ms进入中断一次.
+ 573          {
+ 574   1              TH0     = 0xdc;
+ 575   1              TL0     = 0x31;
+ 576   1              //Pin_test=!Pin_test;
+ 577   1              clk2++;
+ 578   1              clk0++;
+ 579   1              clk1++;
+ 580   1              mainTimer++;
+ 581   1              if(mainTimer>=DELAY_TIM)
+ 582   1              {
+ 583   2                      mainTimer=DELAY_TIM+1;
+ 584   2                      fSec=1;
+ 585   2              }
+ 586   1       //ADC_CONTR=ADC_CONTR | 0x08;           //启动AD转换
+ 587   1       if (clk2==200)
+ 588   1       {
+ 589   2         clk2=0;
+ 590   2         Second++;
+ 591   2         if(Second>=60){Minute++;Second=0;}
+ 592   2       }
+ 593   1              cntSemPend++;
+ 594   1              if(cntComRxTimeout>=5)
+ 595   1              {
+ 596   2                      cntComRxTimeout=5;
+ 597   2                      if(cntComRxIndex!=0)
+ 598   2                      {
+ 599   3                              comRxLength=cntComRxIndex;
+ 600   3                              flag_com_rx_finish=1;
+ 601   3                      }
+ 602   2                      cntComRxIndex=0;
+ 603   2              }
+ 604   1              cntComRxTimeout++;
+ 605   1              //CntCanTxTimeout++;
+ 606   1      }
+ 607          //串口接收中断函数 
+ 608          void serial () interrupt 4 using 1 
+ 609          {
+ 610   1              unsigned char ch;
+ 611   1        if(RI)
+ 612   1        {
+ 613   2              RI = 0;
+C51 COMPILER V9.03   MAIN                                                                  03/31/2012 17:05:13 PAGE 11  
+
+ 614   2          ch=SBUF;
+ 615   2              comRxDataBuf[cntComRxIndex++] = ch;
+ 616   2              cntComRxTimeout=0;
+ 617   2        }
+ 618   1      }
+ 619          
+ 620          void ADC_int(void) interrupt INT_ADC            //ADC中断
+ 621          {
+ 622   1              //INT16U i_16u,j_16u;
+ 623   1        
+ 624   1        INT8U ADC_buf;                      //AD转换寄存器
+ 625   1        ADC_CONTR = ADC_CONTR & 0xef;         //清转换结束标志
+ 626   1        ADC_buf = ADC_DATA;
+ 627   1              ADBuf[PointADC]=ADC_DATA;
+ 628   1              PointADC++;
+ 629   1              if(PointADC>=ADC_BUF_SIZE)fAdCir=1;
+ 630   1              PointADC%=ADC_BUF_SIZE;
+ 631   1        ADC_CONTR=ADC_CONTR | 0x08;           //启动AD转换
+ 632   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2358    ----
+   CONSTANT SIZE    =     12    ----
+   XDATA SIZE       =     78      36
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

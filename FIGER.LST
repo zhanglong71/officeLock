@@ -1,0 +1,559 @@
+C51 COMPILER V9.03   FIGER                                                                 03/31/2012 17:05:13 PAGE 1   
+
+
+C51 COMPILER V9.03, COMPILATION OF MODULE FIGER
+OBJECT MODULE PLACED IN FIGER.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE FIGER.C LARGE BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          #define  FIGER_GLOBALS
+   2          #include <includes.h>
+   3          //#include <cmd_code.h>
+   4          //unsigned int  SearchNumber=0xffff;//搜索到的指纹序列号
+   5          //unsigned char SaveNumber=0;
+   6          //==========================================================================
+   7          //===========================
+   8          void Clear_Timer()
+   9          {
+  10   1       clk2=0;
+  11   1       Second=0;
+  12   1       Minute=0;
+  13   1      }
+  14          unsigned char AdminFiger_chek()    //检测管理指纹
+  15          //--返回值 1:指纹ID.其它状态直接关闭电源
+  16          {
+  17   1        unsigned char i;
+  18   1        unsigned char MK=0;
+  19   1        unsigned char Compare_Number=0;
+  20   1        while(1)
+  21   1        {
+  22   2              WDG_CONTR=0x3d;  //喂狗 1.13s
+  23   2              if(MK==0){i=ReadUserInfo();MK=1;}
+  24   2          switch (i)
+  25   2          {
+  26   3              WDG_CONTR=0x3d;  //喂狗 1.13s
+  27   3            //-------------------------------------------------------------------------
+  28   3            case 1:                         //指纹库空
+  29   3            {
+  30   4              RedOn();
+  31   4              BuzzerCTL(2,150);
+  32   4                RedOff();
+  33   4              //LowVolAlarm();//电压检测报警
+  34   4              power(off);             //关闭电源
+  35   4              return(0);
+  36   4            }break;
+  37   3            //-------------------------------------------------------------------------
+  38   3            case 2:
+  39   3            {
+  40   4                      if(searchfinger()==1)
+  41   4                      {
+  42   5                              if(SearchNumber==0)return(1);       //返回指纹ID
+  43   5                              else
+  44   5                              {
+  45   6                    Compare_Number++;
+  46   6                            RedOn();
+  47   6                    BuzzerCTL(3,150);         //delay(20);
+  48   6                            RedOff();
+  49   6                    if ((Compare_Number)>=3)  //如果3次验证不通过,关闭电源
+  50   6                    {
+  51   7                      
+  52   7                      //LowVolAlarm();//电压检测报警
+  53   7                      power(off);             //关闭电源
+  54   7                    }
+  55   6                    clk2=0;
+C51 COMPILER V9.03   FIGER                                                                 03/31/2012 17:05:13 PAGE 2   
+
+  56   6                    Second=0;
+  57   6                  }
+  58   5                        }
+  59   4                else
+  60   4                {
+  61   5                  Compare_Number++;
+  62   5                          RedOn();
+  63   5                  BuzzerCTL(3,150);         //delay(20);
+  64   5                          RedOff();
+  65   5                  if ((Compare_Number)>=3)  //如果3次验证不通过,关闭电源
+  66   5                  {
+  67   6                      //Module_power(off);
+  68   6                      //LowVolAlarm();//电压检测报警
+  69   6                      power(off);             //关闭电源
+  70   6                  }
+  71   5                  clk2=0;
+  72   5                  Second=0;
+  73   5                }
+  74   4            }break;
+  75   3            //-------------------------------------------------------------------------
+  76   3            default:
+  77   3            {
+  78   4              RedGreenBuzzerCTL(3,200);     //红灯，绿灯，蜂鸣器同时短闪叫3次
+  79   4              //LowVolAlarm();//电压检测报警
+  80   4              power(off);                   //关闭电源
+  81   4            }
+  82   3            //-------------------------------------------------------------------------
+  83   3          }
+  84   2        }
+  85   1      }
+  86          //==========================================================================
+  87          void delete_all(void)    //清空指纹库,删除0-57指纹
+  88          {
+  89   1              unsigned char i=0;
+  90   1        unsigned char i_buf[3];
+  91   1        unsigned int i_16u;
+  92   1        RedOn();              //红灯亮
+  93   1        BuzzerCTL(1,100);     //蜂鸣器鸣叫一下
+  94   1        i_buf[0]=4;
+  95   1        i_buf[1]=0;
+  96   1        i_buf[2]=57;
+  97   1        Command(i_buf);
+  98   1        for(i=0;i<58;i++)userFigerTab[i]=0x30;  //将指纹记入表格
+  99   1        IAP_erase(ADR_FTAB);
+ 100   1        for(i_16u=0;i_16u<58;i_16u++)
+ 101   1              {
+ 102   2                      IAP_pro_ver(ADR_FTAB+i_16u,userFigerTab[i_16u]);
+ 103   2              }
+ 104   1        for(i=0;i<6;i++) //等待3s
+ 105   1        {
+ 106   2              WDG_CONTR=0x3d;  //喂狗 1.13s
+ 107   2         LED_delay_time(633);
+ 108   2        }
+ 109   1        BuzzerCTL(1,500);    //蜂鸣器长叫1s
+ 110   1        RedOff();
+ 111   1        LED_delay_time(400);
+ 112   1        LED_Red_Flash(3,400); //红绿灯同时闪三下
+ 113   1      }
+ 114          //*******************************************************************************************************
+ 115          unsigned char ReadUserInfo()
+ 116          {
+ 117   1        
+C51 COMPILER V9.03   FIGER                                                                 03/31/2012 17:05:13 PAGE 3   
+
+ 118   1        if(userFigerTab[0]==0x30){return 1;}   //指纹库空   返回1
+ 119   1        else {return 2;}                       //指纹库非空 返回2
+ 120   1      }
+ 121          //*******************************************************************************************************
+ 122           //判断第ID号指纹是否已经登记  1:登记  0:未登记
+ 123          bit Dis_ID_User_ON_OFF(unsigned int ID)
+ 124          {
+ 125   1        if(userFigerTab[ID]==0x31){return 1;}
+ 126   1        else{return 0;}
+ 127   1      }
+ 128          //=================================
+ 129          unsigned char searchfinger()  //比对指纹模板0-57
+ 130          {
+ 131   1              unsigned char i_buf[3];
+ 132   1              unsigned char err;
+ 133   1        i_buf[0]=3;
+ 134   1        i_buf[1]=0;
+ 135   1        i_buf[2]=57;
+ 136   1        flag_com_rx_finish=0;
+ 137   1        Command(i_buf);
+ 138   1        OSSemPend(&flag_com_rx_finish,500,&err);
+ 139   1        if(err==OS_NO_ERR)
+ 140   1        {
+ 141   2              flag_com_rx_finish=0;
+ 142   2              OSSemPend(&flag_com_rx_finish,8000,&err);
+ 143   2              if(err==OS_NO_ERR)
+ 144   2              {
+ 145   3                      flag_com_rx_finish=0;
+ 146   3                      if((comRxDataBuf[0]==0x3a)&&(comRxDataBuf[1]==0x03)&&(comRxDataBuf[2]==0xaa)&&(comRxDataBuf[3]==0x01))
+             -  //比对成功
+ 147   3                      {
+ 148   4                              SearchNumber=comRxDataBuf[4];
+ 149   4                              return 1;
+ 150   4                      }
+ 151   3                      else return 0;
+ 152   3              }
+ 153   2              else return 0;
+ 154   2              }
+ 155   1              else         //超时
+ 156   1        {
+ 157   2              return 0;
+ 158   2        }
+ 159   1      }
+ 160          unsigned char Main_searchfinger()  //无等待比对指纹模板0-57
+ 161          {
+ 162   1        if(flag_com_rx_finish==1)
+ 163   1        {
+ 164   2              flag_com_rx_finish=0;
+ 165   2              if((comRxDataBuf[0]==0x3a)&&(comRxDataBuf[1]==0x03)&&(comRxDataBuf[3]==0x01))  //比对成功&&(comRxDataBu
+             -f[2]==0xaa)
+ 166   2              {
+ 167   3                      return(comRxDataBuf[2]);
+ 168   3              }
+ 169   2              else return 0;
+ 170   2        }
+ 171   1        else return 0;
+ 172   1      }
+ 173          //=================================
+ 174          unsigned char SaveFinger(unsigned char ID,unsigned char stime)    //注册指纹
+ 175          {
+ 176   1              unsigned char i_buf[3];
+ 177   1              unsigned char err;
+C51 COMPILER V9.03   FIGER                                                                 03/31/2012 17:05:13 PAGE 4   
+
+ 178   1        i_buf[0]=2;
+ 179   1        i_buf[1]=stime;
+ 180   1        i_buf[2]=ID;
+ 181   1        flag_com_rx_finish=0;
+ 182   1        Command(i_buf);
+ 183   1        OSSemPend(&flag_com_rx_finish,500,&err);
+ 184   1        if(err==OS_NO_ERR)
+ 185   1        {
+ 186   2              //flag_com_rx_finish=0;
+ 187   2              OSSemPend(&flag_com_rx_finish,8000,&err);
+ 188   2              if(err==OS_NO_ERR)
+ 189   2              {
+ 190   3                      flag_com_rx_finish=0;
+ 191   3                      if((comRxDataBuf[0]==0x3a)&&(comRxDataBuf[1]==0x02)&&(comRxDataBuf[2]==0xaa)&&(comRxDataBuf[3]==0x01))
+             -return 1;  //注册成功
+ 192   3                      else return 0;
+ 193   3              }
+ 194   2              else return 0;
+ 195   2              }
+ 196   1              else         //超时
+ 197   1        {
+ 198   2              return 0;
+ 199   2        }
+ 200   1      }
+ 201          //============================================================================================
+ 202          unsigned char  DeleteFinger(unsigned char ID1,unsigned char ID2)
+ 203          {
+ 204   1              unsigned char i,i_buf[3];
+ 205   1              unsigned int i_16u;
+ 206   1              unsigned char err;
+ 207   1        i_buf[0]=4;
+ 208   1        i_buf[1]=ID1;
+ 209   1        i_buf[2]=ID2;
+ 210   1        flag_com_rx_finish=0;
+ 211   1        Command(i_buf);
+ 212   1        OSSemPend(&flag_com_rx_finish,500,&err);
+ 213   1        if(err==OS_NO_ERR)
+ 214   1        {
+ 215   2              for(i=ID1;i<=ID2;i++)userFigerTab[i]=0x30;  //将指纹记入表格
+ 216   2          IAP_erase(ADR_FTAB);
+ 217   2          for(i_16u=0;i_16u<58;i_16u++)
+ 218   2                {
+ 219   3                      IAP_pro_ver(ADR_FTAB+i_16u,userFigerTab[i_16u]);
+ 220   3                }
+ 221   2              flag_com_rx_finish=0;
+ 222   2              return 1;
+ 223   2              }
+ 224   1              else         //超时
+ 225   1        {
+ 226   2              return 0;
+ 227   2        }
+ 228   1      }
+ 229          //==========================================================
+ 230          //==========================================================
+ 231          unsigned char ADD_Manager_User(unsigned char Manager_ID) //根据管理权限 1，2，3添加指纹
+ 232          {
+ 233   1        unsigned char i;
+ 234   1        unsigned char err;
+ 235   1        //unsigned char j;
+ 236   1        //unsigned char temp;
+ 237   1        unsigned char buf=0;
+ 238   1        unsigned char add_number=0;
+C51 COMPILER V9.03   FIGER                                                                 03/31/2012 17:05:13 PAGE 5   
+
+ 239   1        unsigned char ok_number=0;
+ 240   1        unsigned char blank_id=0;
+ 241   1        unsigned int i_16u;
+ 242   1        bit flag=0;
+ 243   1              buf=0;
+ 244   1        WDG_CONTR=0x3d;  //喂狗 1.13s
+ 245   1        if(Manager_ID==0)
+ 246   1        {
+ 247   2              for (i=3;i<=20;i++)                  //显示空指纹
+ 248   2          {
+ 249   3              if(!Dis_ID_User_ON_OFF(i)){break;} //查询首个空ID号码
+ 250   3            if (i==20){i=0xff;break;}  //如果查询到20号都没有空指纹退出
+ 251   3          }
+ 252   2          if(!Dis_ID_User_ON_OFF(1))blank_id=1;
+ 253   2              else if(!Dis_ID_User_ON_OFF(2))blank_id=2;
+ 254   2              else blank_id=i;
+ 255   2          if(blank_id==0xff){RedBuzzerCTL(3,1000);return 0;}
+ 256   2        }
+ 257   1        else if(Manager_ID==1)
+ 258   1        {
+ 259   2              for (i=21;i<=38;i++)                  //显示空指纹
+ 260   2          {
+ 261   3              if(!Dis_ID_User_ON_OFF(i)){break;} //查询首个空ID号码
+ 262   3                  //  buf++;
+ 263   3            if (i==38){i=0xff;break;}  //如果查询到58号都没有空指纹退出
+ 264   3          }
+ 265   2          if(!Dis_ID_User_ON_OFF(2))blank_id=2;
+ 266   2          else blank_id=i;
+ 267   2          if(i==0xff){RedBuzzerCTL(3,1000);return 0;}
+ 268   2        }
+ 269   1        else
+ 270   1        {
+ 271   2              for (i=39;i<=57;i++)                  //显示空指纹
+ 272   2          {
+ 273   3              if(!Dis_ID_User_ON_OFF(i)){break;} //查询首个空ID号码
+ 274   3                  //  buf++;
+ 275   3            if (i==57){i=0xff;break;}  //如果查询到58号都没有空指纹退出
+ 276   3          }
+ 277   2          if(i==0xff){RedBuzzerCTL(3,1000);return 0;}
+ 278   2          blank_id=i;
+ 279   2        }
+ 280   1        add_number++;
+ 281   1        GreenBuzzerCTL(1,150);                       //蜂鸣器叫一声
+ 282   1        //-------------------------------------------//第一次成功获取指纹图像和指纹特征
+ 283   1        i=0;
+ 284   1        OSSemPend(&i,1000,&err);
+ 285   1        GreenBuzzerCTL(1,150);
+ 286   1        i=SaveFinger(blank_id,1);
+ 287   1        if(i==0)return 0;
+ 288   1        i=SaveFinger(blank_id,2);
+ 289   1        if(i==0)return 0;
+ 290   1        userFigerTab[blank_id]=0x31;  //将已存指纹记入表格
+ 291   1        IAP_erase(ADR_FTAB);
+ 292   1        for(i_16u=0;i_16u<58;i_16u++)
+ 293   1              {
+ 294   2                      IAP_pro_ver(ADR_FTAB+i_16u,userFigerTab[i_16u]);
+ 295   2              }
+ 296   1        BuzzerCTL(1,1000);
+ 297   1        LED_each_Flash(3,200);
+ 298   1        return 1;
+ 299   1      //========================================================================================
+ 300   1      }
+C51 COMPILER V9.03   FIGER                                                                 03/31/2012 17:05:13 PAGE 6   
+
+ 301          //========================================================================================
+ 302          
+ 303          unsigned char DEL_Manager_User(unsigned int Manager_ID)
+ 304          {
+ 305   1              unsigned char i;
+ 306   1        GreenOn();
+ 307   1        while(1)
+ 308   1        {
+ 309   2              WDG_CONTR=0x3d;  //喂狗 1.13s
+ 310   2          if(Manager_ID==0)                     //1号指纹则删除其它所有指纹
+ 311   2          {
+ 312   3            i=DeleteFinger(1,57);
+ 313   3            if(i==0)
+ 314   3            {
+ 315   4              RedBuzzerCTL(3,150);
+ 316   4              return 0;
+ 317   4            }
+ 318   3            else
+ 319   3            {
+ 320   4              GreenBuzzerCTL(1,1000);
+ 321   4              return 1;
+ 322   4            }
+ 323   3              }
+ 324   2              else if(Manager_ID==1)
+ 325   2          {
+ 326   3              
+ 327   3              i=DeleteFinger(21,38);
+ 328   3              if(i==0)
+ 329   3            {
+ 330   4              RedBuzzerCTL(3,150);
+ 331   4              return 0;
+ 332   4            }
+ 333   3            else
+ 334   3            {
+ 335   4              GreenBuzzerCTL(1,1000);
+ 336   4              return 1;
+ 337   4            }
+ 338   3              }
+ 339   2              else
+ 340   2          {
+ 341   3              i=DeleteFinger(39,57);
+ 342   3              if(i==0)
+ 343   3            {
+ 344   4              RedBuzzerCTL(3,150);
+ 345   4              return 0;
+ 346   4            }
+ 347   3            else
+ 348   3            {
+ 349   4              GreenBuzzerCTL(1,1000);
+ 350   4              return 1;
+ 351   4            }
+ 352   3              }
+ 353   2          //delay(100);
+ 354   2          WDG_CONTR=0x3d;  //喂狗 1.13s
+ 355   2          GreenBuzzerCTL(1,1000);
+ 356   2          return 1;
+ 357   2        }
+ 358   1      }
+ 359          //=====================================================================
+ 360          void login(void)
+ 361          {
+ 362   1              unsigned char i,err,buf,cmp_number=0;
+C51 COMPILER V9.03   FIGER                                                                 03/31/2012 17:05:13 PAGE 7   
+
+ 363   1        unsigned int temp1;
+ 364   1        unsigned int i_16u;
+ 365   1        buf=ReadUserInfo();
+ 366   1        if(buf==1)//指纹库为空  添加第一枚管理员指纹
+ 367   1        {
+ 368   2              i=SaveFinger(0,1);
+ 369   2          if(i==0)
+ 370   2          {
+ 371   3              RedBuzzerCTL(3,150);return;
+ 372   3          }
+ 373   2          i=SaveFinger(0,2);
+ 374   2          if(i==0)
+ 375   2          {
+ 376   3              RedBuzzerCTL(3,150);return;
+ 377   3          }
+ 378   2          userFigerTab[0]=0x31;  //将已存指纹记入表格
+ 379   2          IAP_erase(ADR_FTAB);
+ 380   2          for(i_16u=0;i_16u<58;i_16u++)
+ 381   2                {
+ 382   3                      IAP_pro_ver(ADR_FTAB+i_16u,userFigerTab[i_16u]);
+ 383   3                }
+ 384   2                GreenBuzzerCTL(1,1000) ;
+ 385   2          LED_each_Flash(3,200) ;
+ 386   2          return;
+ 387   2        }
+ 388   1        if(buf==2)//指纹库不为空 搜索指纹
+ 389   1        {
+ 390   2              loop_cmp1:
+ 391   2              WDG_CONTR=0x3d;  //喂狗 1.13s
+ 392   2              temp1=searchfinger();     //搜索返回ID号
+ 393   2          if (temp1==0)
+ 394   2          {
+ 395   3              //比对不通过
+ 396   3            RedBuzzerCTL(3,150);
+ 397   3            cmp_number++;
+ 398   3            if(cmp_number<=2) goto loop_cmp1;
+ 399   3            return;
+ 400   3          }
+ 401   2          else
+ 402   2          {
+ 403   3              if(SearchNumber<3)  //如果ID =0,1,2
+ 404   3            {
+ 405   4              GreenBuzzerCTL(1,500);
+ 406   4              i=0;
+ 407   4              OSSemPend(&i,2000,&err);
+ 408   4              GreenBuzzerCTL(1,150);    //蜂鸣器叫3声 表示第二次输入指纹
+ 409   4              ADD_Manager_User(SearchNumber);//分组添加
+ 410   4            }
+ 411   3            else     //如果是4~32则没有添加权限
+ 412   3            {
+ 413   4              RedBuzzerCTL(3,150);
+ 414   4              cmp_number++;
+ 415   4              if(cmp_number<=2) goto loop_cmp1;
+ 416   4              return;
+ 417   4            }
+ 418   3          }
+ 419   2        }
+ 420   1      }
+ 421          //==================================
+ 422          void deletef(void)
+ 423          {
+ 424   1              unsigned char buf,cmp_number=0;
+C51 COMPILER V9.03   FIGER                                                                 03/31/2012 17:05:13 PAGE 8   
+
+ 425   1        unsigned int temp1;
+ 426   1        buf=ReadUserInfo();
+ 427   1        if(buf==1)//指纹库为空 显示 －－
+ 428   1        {
+ 429   2              RedBuzzerCTL(3,150);return;
+ 430   2          return;
+ 431   2        }
+ 432   1        if(buf==2)//指纹库不为空 搜索指纹
+ 433   1        {
+ 434   2              loop_cmp:
+ 435   2              WDG_CONTR=0x3d;  //喂狗 1.13s
+ 436   2          temp1=searchfinger();
+ 437   2          if (temp1==0)
+ 438   2          {//比对不通过
+ 439   3              RedBuzzerCTL(3,150);
+ 440   3            cmp_number++;
+ 441   3            if  (cmp_number<=2) goto loop_cmp;
+ 442   3            return;
+ 443   3          }
+ 444   2          else
+ 445   2          {
+ 446   3              if(SearchNumber<3)//如果ID=0,1,2
+ 447   3            {
+ 448   4              RedOff();
+ 449   4              GreenBuzzerCTL(1,500);// 如果管理员认证通过,删除指纹
+ 450   4              DEL_Manager_User(SearchNumber);//分组删除
+ 451   4            }
+ 452   3            else  //其他人没有删除权限
+ 453   3            {
+ 454   4              RedBuzzerCTL(3,150);
+ 455   4              cmp_number++;
+ 456   4              if(cmp_number<=2) goto loop_cmp;
+ 457   4              return;
+ 458   4            }
+ 459   3          }
+ 460   2        }
+ 461   1      }
+ 462          //===================================
+ 463          //==================================
+ 464          bit VefPSW(void)             //模块验证码判断
+ 465          {
+ 466   1              unsigned char count,i_buf[3];
+ 467   1              unsigned char err;
+ 468   1              count=0;
+ 469   1        i_buf[0]=0;
+ 470   1        i_buf[1]=0;
+ 471   1        i_buf[2]=0;
+ 472   1        while (1)
+ 473   1        {
+ 474   2          WDG_CONTR=0x3d;  //喂狗 1.13s
+ 475   2          flag_com_rx_finish=0;
+ 476   2          Command(i_buf);
+ 477   2          OSSemPend(&flag_com_rx_finish,500,&err);
+ 478   2          if(err==OS_NO_ERR)
+ 479   2          {
+ 480   3              flag_com_rx_finish=0;
+ 481   3              return 1;
+ 482   3                }
+ 483   2                count++;
+ 484   2          if(count>=2)
+ 485   2          {
+ 486   3              RedOn();
+C51 COMPILER V9.03   FIGER                                                                 03/31/2012 17:05:13 PAGE 9   
+
+ 487   3            RedGreenBuzzerCTL(2,150); //验证口令不正确：红绿灯同时亮，并且蜂鸣器短叫两声
+ 488   3            return(0);   //error return
+ 489   3                }
+ 490   2          delay(10);
+ 491   2               }
+ 492   1      }
+ 493          
+ 494          /*------------------------------------------------------------*/
+ 495          //串口发送一个字节数据
+ 496          /*------------------------------------------------------------*/
+ 497          static void TxdByte(unsigned char i)
+ 498          {
+ 499   1              TI = 0;
+ 500   1        SBUF = i;
+ 501   1        while(!TI);
+ 502   1        TI = 0;
+ 503   1      }
+ 504          //==================================================
+ 505          //  FUNCTION:   Sent Command-string
+ 506          //=================================================
+ 507          void Command(unsigned char *p) //发送命令
+ 508          {
+ 509   1        TxdByte(0x3a);
+ 510   1              TxdByte(0xff);
+ 511   1              TxdByte(0xff);
+ 512   1              TxdByte(0xff);
+ 513   1              TxdByte(p[0]);
+ 514   1              TxdByte(p[1]);
+ 515   1              TxdByte(p[2]);
+ 516   1              TxdByte(0x3a+0xff+0xff+0xff+p[0]+p[1]+p[2]);
+ 517   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2121    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =     64      49
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =     20    ----
+   BIT SIZE         =   ----       1
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
